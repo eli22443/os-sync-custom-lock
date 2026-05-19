@@ -133,6 +133,11 @@ int             strlen(const char*);
 int             strncmp(const char*, const char*, uint);
 char*           strncpy(char*, const char*, int);
 
+// sysproc.c
+void            israeli_lock_init(void);
+void            lcg_init(void);
+uint            lcg_rand(void);
+
 // syscall.c
 void            argint(int, int*);
 int             argstr(int, char*, int);

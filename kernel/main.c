@@ -28,6 +28,10 @@ main()
     iinit();         // inode table
     fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
+
+    lcg_init(); // Init lcg Spinlock
+    israeli_lock_init(); // Init Israeli-lock
+    
     userinit();      // first user process
     __sync_synchronize();
     started = 1;
