@@ -44,3 +44,5 @@ entry("israeli_create");
 entry("israeli_acquire");
 entry("israeli_release");
 entry("israeli_destroy");
+entry("increment_team_score");
+entry("get_team_score");

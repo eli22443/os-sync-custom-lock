@@ -31,7 +31,8 @@ main()
 
     lcg_init(); // Init lcg Spinlock
     israeli_lock_init(); // Init Israeli-lock
-    
+    score_init();  // Init scores
+
     userinit();      // first user process
     __sync_synchronize();
     started = 1;

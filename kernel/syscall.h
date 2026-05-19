@@ -28,5 +28,7 @@
 #define SYS_israeli_acquire 27
 #define SYS_israeli_release 28
 #define SYS_israeli_destroy 29
+#define SYS_increment_team_score 30
+#define SYS_get_team_score       31
 
 

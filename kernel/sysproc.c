@@ -13,6 +13,58 @@ static struct spinlock lcg_lock;
 #define MAX_WAITING 16
 #define LOCK_COUNT 15
 
+#define MAX_TEAMS 10
+
+static int team_scores[MAX_TEAMS];
+static struct spinlock score_lock;
+
+// נוסיף את זה בתוך פונקציית האתחול הגלובלית שקוראים לה מ-main.c
+void
+score_init(void)
+{
+  initlock(&score_lock, "score_lock");
+  for(int i = 0; i < MAX_TEAMS; i++) {
+    team_scores[i] = 0;
+  }
+}
+
+// קריאת מערכת להגדלת הניקוד של הקבוצה ב-1 והחזרת הניקוד החדש
+uint64
+sys_increment_team_score(void)
+{
+  int team_id;
+  argint(0, &team_id);
+  
+  if(team_id < 0 || team_id >= MAX_TEAMS)
+    return -1;
+    
+  int new_score;
+  acquire(&score_lock);
+  team_scores[team_id]++;
+  new_score = team_scores[team_id];
+  release(&score_lock);
+  
+  return new_score;
+}
+
+// קריאת מערכת לקבלת הניקוד הנוכחי של קבוצה מסוימת (בשביל בדיקת תנאי הסיום)
+uint64
+sys_get_team_score(void)
+{
+  int team_id;
+  argint(0, &team_id);
+  
+  if(team_id < 0 || team_id >= MAX_TEAMS)
+    return -1;
+    
+  int score;
+  acquire(&score_lock);
+  score = team_scores[team_id];
+  release(&score_lock);
+  
+  return score;
+}
+
 struct israeli_lock {
   struct spinlock lk;        // מנעול פנימי להגנה על מבנה הנתונים
   int active;                 // האם המנעול נוצר ופעיל  
@@ -163,6 +215,9 @@ sys_israeli_release(void)
     if(found_friend) {  
       // הטלת מטבע אקראי בין 0 ל-99 בעזרת המחולל מטאסק 0  
       uint random_val = lcg_rand() % 100;
+      printf("[DEBUG] favoritism=%d, rand_val=%d, decision=%s\n", 
+        l->favoritism, random_val, (random_val < l->favoritism) ? "PROTEKCIA" : "FIFO");
+        
       if(random_val >= l->favoritism) {  
         // בהסתברות המשלימה - חוזרים ל-FIFO רגיל (אינדקס 0)  
         chosen_idx = 0;  

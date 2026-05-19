@@ -137,6 +137,7 @@ char*           strncpy(char*, const char*, int);
 void            israeli_lock_init(void);
 void            lcg_init(void);
 uint            lcg_rand(void);
+void            score_init(void);
 
 // syscall.c
 void            argint(int, int*);
