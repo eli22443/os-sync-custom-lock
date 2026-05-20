@@ -32,6 +32,7 @@ int israeli_release(int lock_id);
 int israeli_destroy(int lock_id); 
 int increment_team_score(int team_id);
 int get_team_score(int team_id);
+int reset_team_scores();
 
 
 // ulib.c

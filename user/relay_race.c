@@ -13,6 +13,8 @@ int main(int argc, char *argv[]) {
     favoritism = atoi(argv[1]);
   }
 
+  reset_team_scores();
+
   printf("Starting Relay Race Tournament with %d%% favoritism...\n", favoritism);
 
   // 1. יצירת מנעול ישראלי יחיד שמייצג את מקל השליחים
@@ -22,12 +24,16 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  // אתחול מחולל המספרים האקראיים
-  lcg_srand(getpid());
+  // Pipe barrier: all runners block until every child is forked.
+  int start_pipe[2];
+  if (pipe(start_pipe) < 0) {
+    printf("pipe failed\n");
+    exit(1);
+  }
 
-  // 2. יצירת רצים (child processes) וחלוקתם לקבוצות
-  for (int t = 0; t < TEAMS; t++) {
-    for (int r = 0; r < RUNNERS_PER_TEAM; r++) {
+  // Fork round-robin (one runner per team per wave) so no team is created last.
+  for (int r = 0; r < RUNNERS_PER_TEAM; r++) {
+    for (int t = 0; t < TEAMS; t++) {
       int pid = fork();
       
       if (pid < 0) {
@@ -36,8 +42,13 @@ int main(int argc, char *argv[]) {
       }
 
       if (pid == 0) { // קוד הרץ (תהליך הבן)
-        // הגדרת ה-gid של הרץ לפי מזהה הקבוצה שלו
+        close(start_pipe[1]);
+        char ch;
+        read(start_pipe[0], &ch, 1); // wait for parent to close write end
+        close(start_pipe[0]);
+
         setgid(t);
+        lcg_srand(getpid());
         
         // לולאת הריצה של הרץ
         while (1) {
@@ -86,6 +97,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // Release all runners at once.
+  close(start_pipe[1]);
+  close(start_pipe[0]);
+
   // קוד תהליך האב: מחכה שכל הרצים יסיימו ברגע שאחד מנצח
   for (int i = 0; i < TEAMS * RUNNERS_PER_TEAM; i++) {
     wait(0);
@@ -107,5 +122,6 @@ int main(int argc, char *argv[]) {
 
   
   israeli_destroy(lock_id);
+
   exit(0);
 }

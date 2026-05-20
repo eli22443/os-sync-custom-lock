@@ -28,6 +28,18 @@ score_init(void)
   }
 }
 
+// reset scores
+uint64
+sys_reset_team_scores(void)
+{
+  acquire(&score_lock);
+  for(int i = 0; i < MAX_TEAMS; i++) {
+    team_scores[i] = 0;
+  }
+  release(&score_lock);
+  return 0;
+}
+
 // קריאת מערכת להגדלת הניקוד של הקבוצה ב-1 והחזרת הניקוד החדש
 uint64
 sys_increment_team_score(void)
@@ -217,7 +229,7 @@ sys_israeli_release(void)
       uint random_val = lcg_rand() % 100;
       printf("[DEBUG] favoritism=%d, rand_val=%d, decision=%s\n", 
         l->favoritism, random_val, (random_val < l->favoritism) ? "PROTEKCIA" : "FIFO");
-        
+
       if(random_val >= l->favoritism) {  
         // בהסתברות המשלימה - חוזרים ל-FIFO רגיל (אינדקס 0)  
         chosen_idx = 0;  

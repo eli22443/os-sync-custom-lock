@@ -30,5 +30,6 @@
 #define SYS_israeli_destroy 29
 #define SYS_increment_team_score 30
 #define SYS_get_team_score       31
+#define SYS_reset_team_scores    32
 
 
