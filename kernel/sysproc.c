@@ -172,15 +172,37 @@ sys_israeli_acquire(void)
     l->queue[l->queue_size++] = p;
 
     // sleep until lock is free and this process is chosen
-    while(l->held || l->queue[0] != p) {
-      sleep(l, &l->lk); 
+    for(;;) {
+      if(!l->active) {
+        // lock was destroyed; remove self from queue and fail
+        for(int i = 0; i < l->queue_size; i++) {
+          if(l->queue[i] == p) {
+            for(int j = i + 1; j < l->queue_size; j++)
+              l->queue[j-1] = l->queue[j];
+            l->queue_size--;
+            break;
+          }
+        }
+        release(&l->lk);
+        return -1;
+      }
+      if(!l->held && l->queue[0] == p)
+        break;
+      sleep(l, &l->lk);
     }
 
     // process woke at queue head; remove it and shift the rest
-    for(int i = 1; i < l->queue_size; i++) {
-      l->queue[i-1] = l->queue[i];
+    if(l->queue_size > 0 && l->queue[0] == p) {
+      for(int i = 1; i < l->queue_size; i++) {
+        l->queue[i-1] = l->queue[i];
+      }
+      l->queue_size--;
     }
-    l->queue_size--;
+  }
+
+  if(!l->active) {
+    release(&l->lk);
+    return -1;
   }
 
   l->held = 1; // acquire the lock
@@ -227,10 +249,8 @@ sys_israeli_release(void)
     if(found_friend) {  
       // random coin flip from 0 to 99 using the task-0 PRNG
       uint random_val = lcg_rand() % 100;
-      printf("[DEBUG] favoritism=%d, rand_val=%d, decision=%s\n", 
-        l->favoritism, random_val, (random_val < l->favoritism) ? "PROTEKCIA" : "FIFO");
 
-      if(random_val >= l->favoritism) {  
+      if(random_val >= l->favoritism) {
         // with complementary probability, fall back to normal FIFO (index 0)
         chosen_idx = 0;  
       }
