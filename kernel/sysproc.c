@@ -6,8 +6,8 @@
 #include "spinlock.h"
 #include "proc.h"
 
-// 1. הגדרת משתנה המצב ומנעול ה-Spinlock להגנה עליו
-static uint32 lcg_state = 1; // מצב ראשוני ברירת מחדל
+// LCG state and spinlock protecting it
+static uint32 lcg_state = 1; // default initial state
 static struct spinlock lcg_lock;
 
 #define MAX_WAITING 16
@@ -18,7 +18,7 @@ static struct spinlock lcg_lock;
 static int team_scores[MAX_TEAMS];
 static struct spinlock score_lock;
 
-// נוסיף את זה בתוך פונקציית האתחול הגלובלית שקוראים לה מ-main.c
+// called from main() during kernel boot
 void
 score_init(void)
 {
@@ -40,7 +40,7 @@ sys_reset_team_scores(void)
   return 0;
 }
 
-// קריאת מערכת להגדלת הניקוד של הקבוצה ב-1 והחזרת הניקוד החדש
+// system call: increment a team's score by 1 and return the new score
 uint64
 sys_increment_team_score(void)
 {
@@ -59,7 +59,7 @@ sys_increment_team_score(void)
   return new_score;
 }
 
-// קריאת מערכת לקבלת הניקוד הנוכחי של קבוצה מסוימת (בשביל בדיקת תנאי הסיום)
+// system call: get a team's current score (for end-condition checks)
 uint64
 sys_get_team_score(void)
 {
@@ -78,17 +78,17 @@ sys_get_team_score(void)
 }
 
 struct israeli_lock {
-  struct spinlock lk;        // מנעול פנימי להגנה על מבנה הנתונים
-  int active;                 // האם המנעול נוצר ופעיל  
-  int favoritism;             // מקדם הפרוטקציה (0-100)  
-  int held;                   // האם המנעול תפוס כרגע (1 או 0)
-  struct proc* queue[MAX_WAITING]; // תור ה-FIFO של התהליכים הממתינים   131, 135]
-  int queue_size;             // כמות התהליכים הנוכחית בתור
+  struct spinlock lk;        // internal lock protecting this structure
+  int active;                 // whether the lock was created and is active
+  int favoritism;             // protection factor (0-100)
+  int held;                   // whether the lock is currently held (1 or 0)
+  struct proc* queue[MAX_WAITING]; // FIFO queue of waiting processes
+  int queue_size;             // number of processes currently in the queue
 };
 
-static struct israeli_lock locks[LOCK_COUNT]; // מערך גלובלי של מנעולים  
+static struct israeli_lock locks[LOCK_COUNT]; // global array of locks
 
-// אתחול המערך עם עליית ה-Kernel  
+// initialize the array during kernel boot
 void
 israeli_lock_init(void)
 {
@@ -100,7 +100,7 @@ israeli_lock_init(void)
   }
 }
 
-// קריאת מערכת: setgid
+// system call: setgid
 uint64
 sys_setgid(void)
 {
@@ -111,14 +111,14 @@ sys_setgid(void)
   return 0;
 }
 
-// קריאת מערכת: getgid
+// system call: getgid
 uint64
 sys_getgid(void)
 {
   return myproc()->gid;
 }
 
-// קריאת מערכת: israeli_create  
+// system call: israeli_create
 uint64
 sys_israeli_create(void)
 {
@@ -136,14 +136,14 @@ sys_israeli_create(void)
       locks[i].held = 0;
       locks[i].queue_size = 0;
       release(&locks[i].lk);
-      return i; // ה-ID של המנעול הוא האינדקס שלו במערך  
+      return i; // lock id is its index in the array
     }
     release(&locks[i].lk);
   }
   return -1; 
 }
 
-// קריאת מערכת: israeli_acquire  
+// system call: israeli_acquire
 uint64
 sys_israeli_acquire(void)
 {
@@ -162,33 +162,33 @@ sys_israeli_acquire(void)
     return -1; 
   }
 
-  // אם המנעול תפוס או שיש תהליכים שמחכים לפנינו (שומר על סדר FIFO בתור)  
+  // if lock is held or others are waiting ahead of us (preserves FIFO order)
   if(l->held || l->queue_size > 0) {
     if(l->queue_size >= MAX_WAITING) {
       release(&l->lk);
-      return -1; // התור מלא  
+      return -1; // queue is full
     }
-    // הוספת התהליך לסוף התור   135]
+    // add process to end of queue
     l->queue[l->queue_size++] = p;
 
-    // שינה עד שהמנעול מתפנה והתהליך נבחר  
+    // sleep until lock is free and this process is chosen
     while(l->held || l->queue[0] != p) {
       sleep(l, &l->lk); 
     }
 
-    // התהליך התעורר והוא בראש התור - מוציאים אותו מהתור ומקדמים את השאר   135]
+    // process woke at queue head; remove it and shift the rest
     for(int i = 1; i < l->queue_size; i++) {
       l->queue[i-1] = l->queue[i];
     }
     l->queue_size--;
   }
 
-  l->held = 1; // תפיסת המנעול  
+  l->held = 1; // acquire the lock
   release(&l->lk);
   return 0; 
 }
 
-// קריאת מערכת: israeli_release  
+// system call: israeli_release
 uint64
 sys_israeli_release(void)
 {
@@ -207,36 +207,36 @@ sys_israeli_release(void)
     return -1; 
   }
 
-  l->held = 0; // שחרור המנעול  118]
+  l->held = 0; // release the lock
 
   if(l->queue_size > 0) {
-    int G = p->gid; // ה-gid של התהליך המשחרר
-    int chosen_idx = 0; // ברירת המחדל היא FIFO (הראשון בתור)
+    int G = p->gid; // gid of the releasing process
+    int chosen_idx = 0; // default is FIFO (head of queue)
     int found_friend = 0;
 
-    // 1. חיפוש תהליך עם אותו gid בתור  
+    // 1. search for a process with the same gid in the queue
     for(int i = 0; i < l->queue_size; i++) {
       if(l->queue[i]->gid == G) {  
-        chosen_idx = i; // לוקחים את המוקדם ביותר מביניהם (האינדקס הנמוך ביותר בתור)  
+        chosen_idx = i; // pick the earliest among them (lowest queue index)
         found_friend = 1;
         break;
       }
     }
 
-    // 2. הפעלת מנגנון הפרוטקציה האקראי  
+    // 2. apply random protection mechanism
     if(found_friend) {  
-      // הטלת מטבע אקראי בין 0 ל-99 בעזרת המחולל מטאסק 0  
+      // random coin flip from 0 to 99 using the task-0 PRNG
       uint random_val = lcg_rand() % 100;
       printf("[DEBUG] favoritism=%d, rand_val=%d, decision=%s\n", 
         l->favoritism, random_val, (random_val < l->favoritism) ? "PROTEKCIA" : "FIFO");
 
       if(random_val >= l->favoritism) {  
-        // בהסתברות המשלימה - חוזרים ל-FIFO רגיל (אינדקס 0)  
+        // with complementary probability, fall back to normal FIFO (index 0)
         chosen_idx = 0;  
       }
     }
 
-    // אם נבחר חבר מהאמצע, נעביר אותו לראש התור כדי שהוא יתעורר ויקבל את המנעול
+    // if a friend was chosen from the middle, move them to queue head
     if(chosen_idx > 0) {
       struct proc *friend = l->queue[chosen_idx];
       for(int i = chosen_idx; i > 0; i--) {
@@ -245,7 +245,7 @@ sys_israeli_release(void)
       l->queue[0] = friend;
     }
 
-    // מעירים את כל התהליכים הישנים על המנעול כדי שראש התור החדש יתקדם  
+    // wake all waiters so the new queue head can proceed
     wakeup(l);  
   }
 
@@ -253,7 +253,7 @@ sys_israeli_release(void)
   return 0;  
 }
 
-// קריאת מערכת: israeli_destroy  
+// system call: israeli_destroy
 uint64
 sys_israeli_destroy(void)
 {
@@ -271,10 +271,10 @@ sys_israeli_destroy(void)
     return -1;  
   }
 
-  l->active = 0; // ביטול המנעול  
+  l->active = 0; // deactivate the lock
   l->held = 0;
  
-  // אם יש תהליכים תקועים בתור, נעיר אותם שיחזרו עם שגיאה
+  // wake any processes stuck in the queue so they can return with an error
   if(l->queue_size > 0) {
     wakeup(l);  
   }
@@ -284,7 +284,7 @@ sys_israeli_destroy(void)
   return 0;  
 }
 
-// פונקציית אתחול למנעול - יש לוודא שהיא נקראת בזמן עליית המערכת (למשל מתוך main.c)
+// initialization function for the LCG lock; must be called during boot (e.g. from main.c)
 void
 lcg_init(void)
 {
@@ -308,7 +308,7 @@ lcg_rand(void)
   acquire(&lcg_lock);
   
   // X_{n+1} = a * X_n + b
-  // המודולו נעשה אוטומטית מעצם הגלישה של uint32_t (מכיוון ש-m = 2^32)
+  // modulo happens implicitly via uint32 overflow (since m = 2^32)
   lcg_state = lcg_state * 1664525 + 1013904223;
   result = lcg_state;
   
@@ -316,13 +316,13 @@ lcg_rand(void)
   return result;
 }
 
-// --- מעטפת עבור קריאות המערכת (System Calls) ---
+// --- wrappers for system calls ---
 
 uint64
 sys_lcg_srand(void)
 {
   int seed;
-  // שליפת הארגומנט שנשלח מה-userspace
+  // fetch argument sent from userspace
   argint(0, &seed);
   lcg_srand((uint)seed);
   return 0;

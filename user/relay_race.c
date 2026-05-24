@@ -7,7 +7,7 @@
 #define TARGET_SCORE 30
 
 int main(int argc, char *argv[]) {
-  int favoritism = 50; // ערך ברירת מחדל, נשנה ל-0, 50, או 100 בניסויים
+  int favoritism = 50; // default value; try 0, 50, or 100 in experiments
 
   if (argc > 1) {
     favoritism = atoi(argv[1]);
@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
 
   printf("Starting Relay Race Tournament with %d%% favoritism...\n", favoritism);
 
-  // 1. יצירת מנעול ישראלי יחיד שמייצג את מקל השליחים
+  // 1. Create a single Israeli lock representing the relay baton
   int lock_id = israeli_create(favoritism);
   if (lock_id < 0) {
     printf("Error: failed to create israeli lock\n");
@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
         exit(1);
       }
 
-      if (pid == 0) { // קוד הרץ (תהליך הבן)
+      if (pid == 0) { // runner code (child process)
         close(start_pipe[1]);
         char ch;
         read(start_pipe[0], &ch, 1); // wait for parent to close write end
@@ -50,9 +50,9 @@ int main(int argc, char *argv[]) {
         setgid(t);
         lcg_srand(getpid());
         
-        // לולאת הריצה של הרץ
+        // runner main loop
         while (1) {
-          // בדיקה האם המרוץ כבר הסתיים על ידי קבוצה כלשהי לפני שמנסים לקחת את המקל
+          // check whether any team already won before trying to take the baton
           int game_over = 0;
           for (int check_t = 0; check_t < TEAMS; check_t++) {
             if (get_team_score(check_t) >= TARGET_SCORE) {
@@ -62,10 +62,10 @@ int main(int argc, char *argv[]) {
           }
           if (game_over) break;
 
-          // א. השגת מקל השליחים (המנעול)
+          // (a) acquire the relay baton (the lock)
           israeli_acquire(lock_id);
 
-          // בדיקה חוזרת למקרה שהמרוץ הסתיים בזמן שישנו/חיכינו בתור לקבלת המקל
+          // re-check in case the race ended while sleeping/waiting in queue
           game_over = 0;
           for (int check_t = 0; check_t < TEAMS; check_t++) {
             if (get_team_score(check_t) >= TARGET_SCORE) {
@@ -79,17 +79,17 @@ int main(int argc, char *argv[]) {
             break;
           }
 
-          // ב+ג. הגדלת הניקוד והדפסת הודעה למסך
+          // (b)+(c) increment score and print a message
           int current_team = getgid();
           int updated_score = increment_team_score(current_team);
           
           printf("Runner %d (Team %d) acquired the baton. Team %d score = %d\n", 
                  getpid(), current_team, current_team, updated_score);
 
-          // ד. שחרור המקל
+          // (d) release the baton
           israeli_release(lock_id);
 
-          // ה. שינה קצרה כדי לאפשר לרצים אחרים לתפוס את המקל
+          // (e) short sleep so other runners can grab the baton
           sleep(2);
         }
         exit(0);
@@ -101,12 +101,12 @@ int main(int argc, char *argv[]) {
   close(start_pipe[1]);
   close(start_pipe[0]);
 
-  // קוד תהליך האב: מחכה שכל הרצים יסיימו ברגע שאחד מנצח
+  // parent process: wait for all runners to finish once someone wins
   for (int i = 0; i < TEAMS * RUNNERS_PER_TEAM; i++) {
     wait(0);
   }
 
-  // הדפסת התוצאות הסופיות החגיגיות
+  // print final tournament results
   printf("\n--- TOURNAMENT RESULTS ---\n");
   int winner_team = 0;
   int max_score = 0;
