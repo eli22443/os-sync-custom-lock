@@ -13,6 +13,17 @@ A configurable **group-favoritism lock** (queue-based, sleep/wakeup) that:
 
 The project also includes helper syscalls for team scores and a multi-process **relay race** demo that stresses the lock under contention.
 
+## Tech skills
+
+- C
+- Operating systems (xv6 kernel)
+- Concurrency / synchronization
+- System calls
+- Process management (`fork`, `wait`, sleep/wakeup)
+- RISC-V + QEMU
+- Unix / Linux
+- Make / Git
+
 ## Key files
 
 | Area | Path |
