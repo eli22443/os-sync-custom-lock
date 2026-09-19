@@ -1,8 +1,8 @@
 # OS Sync — Custom Kernel Lock (xv6)
 
-Operating systems project extending **xv6-riscv** with a **custom synchronization lock** implemented in the kernel, exposed to user space through new system calls.
+Group operating systems project extending **xv6-riscv** with a **custom synchronization lock** implemented in the kernel and exposed to user space through new system calls.
 
-## What I built
+## What we built
 
 A configurable **group-favoritism lock** (queue-based, sleep/wakeup) that:
 
@@ -11,7 +11,7 @@ A configurable **group-favoritism lock** (queue-based, sleep/wakeup) that:
 - Otherwise falls back to strict FIFO
 - Is managed via syscalls: create, acquire, release, destroy
 
-Also includes helper syscalls for team scores and a multi-process **relay race** demo that stresses the lock under contention.
+The project also includes helper syscalls for team scores and a multi-process **relay race** demo that stresses the lock under contention.
 
 ## Key files
 
@@ -41,5 +41,6 @@ Favoritism argument: `0` (pure FIFO), `50` (default), or `100` (always prefer sa
 
 ## Credits
 
+- Group coursework project (BGU Operating Systems)
 - Based on [MIT xv6-riscv](https://pdos.csail.mit.edu/6.1810/) (see [`LICENSE`](LICENSE))
 - Course base: BGU OS lab fork of xv6 with devcontainer support
